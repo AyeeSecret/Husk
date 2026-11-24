@@ -14,13 +14,18 @@ jobs:
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - name: Install build tools
         run: |
           xcodebuild -version
           brew install meson ninja pkgconf qemu xcodegen
+          python3 -m venv "$RUNNER_TEMP/husk-python"
+          "$RUNNER_TEMP/husk-python/bin/python" -m pip install PyYAML
+          python_modules=$("$RUNNER_TEMP/husk-python/bin/python" -c 'import site; print(site.getsitepackages()[0])')
+          PYTHONPATH="$python_modules" python3 -c 'import yaml'
+          echo "PYTHONPATH=$python_modules" >> "$GITHUB_ENV"
           rustup target add aarch64-apple-ios
       - name: Stage the PS4 module from Husk 3.4
         run: |
@@ -34,14 +39,14 @@ jobs:
           DD: ${{ runner.temp }}/husk-derived-data
         run: ./scripts/ci_build.sh "$PWD/build/Husk.ipa"
       - name: Upload test IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Husk-issue-282
           path: build/Husk.ipa
           if-no-files-found: error
       - name: Upload build logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Husk-build-logs
           path: |
