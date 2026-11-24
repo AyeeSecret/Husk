@@ -841,10 +841,15 @@ final class GuestImage: ObservableObject {
         // the release says what the bytes should hash to, insist on it -- a
         // truncated image otherwise installs cleanly and fails much later,
         // inside QEMU, as something that looks nothing like a bad download.
-        if let want = manifest?.image.sha256, let got = digest, want != got {
+        guard let digest else {
+            try? FileManager.default.removeItem(at: tempURL)
+            failed("Could not verify the downloaded image. Tap to retry.")
+            return
+        }
+        if let want = manifest?.image.sha256, want != digest {
             let bytes = (try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? Int64) ?? -1
             try? FileManager.default.removeItem(at: tempURL)
-            HuskLog.log("guest", "image rejected: sha256 \(got.prefix(12)) but the "
+            HuskLog.log("guest", "image rejected: sha256 \(digest.prefix(12)) but the "
                                + "release says \(want.prefix(12)); \(bytes) bytes, "
                                + "release has \(manifest?.image.size ?? -1)")
             state = .failed("The downloaded image did not match the release. Tap to retry.")
@@ -868,9 +873,7 @@ final class GuestImage: ObservableObject {
                 try FileManager.default.moveItem(at: tempURL, to: dest)
                 try? Self.imageVersion.write(toFile: versionStampPath,
                                              atomically: true, encoding: .utf8)
-                if let digest {
-                    try? digest.write(toFile: imageDigestPath, atomically: true, encoding: .utf8)
-                }
+                try? digest.write(toFile: imageDigestPath, atomically: true, encoding: .utf8)
                 // A new system image usually invalidates the snapshot taken
                 // against the old one -- but not always, and the manifest is
                 // what knows. v11 differs from v10 only in a GRUB toggle read

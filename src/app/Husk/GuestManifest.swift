@@ -165,9 +165,22 @@ final class DigestWriter {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
         let writer = DigestWriter()
-        while let chunk = try? handle.read(upToCount: 4 << 20), !chunk.isEmpty {
-            writer.update(chunk)
+        do {
+            // FileHandle bridges through Foundation. Drain each chunk's
+            // autoreleased objects before reading the next one, even when
+            // the caller is a long-running URLSession delegate callback.
+            while true {
+                let reachedEOF = try autoreleasepool {
+                    guard let chunk = try handle.read(upToCount: 4 << 20), !chunk.isEmpty else {
+                        return true
+                    }
+                    writer.update(chunk)
+                    return false
+                }
+                if reachedEOF { return writer.finish() }
+            }
+        } catch {
+            return nil
         }
-        return writer.finish()
     }
 }

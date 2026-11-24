@@ -1,0 +1,49 @@
+name: Build Husk iOS
+on:
+  push:
+    branches: [fix/android-image-install]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 120
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install build tools
+        run: |
+          xcodebuild -version
+          brew install meson ninja pkgconf qemu xcodegen
+          rustup target add aarch64-apple-ios
+      - name: Stage the PS4 module from Husk 3.4
+        run: |
+          curl -fsSL --retry 3 https://github.com/Leviidev/Husk/releases/download/3.4/Husk.ipa -o "$RUNNER_TEMP/upstream.ipa"
+          mkdir -p build/ios-arm64/lib
+          unzip -p "$RUNNER_TEMP/upstream.ipa" 'Payload/*.app/Frameworks/libhuskps4.dylib' > build/ios-arm64/lib/libhuskps4.dylib
+          test -s build/ios-arm64/lib/libhuskps4.dylib
+          rm "$RUNNER_TEMP/upstream.ipa"
+      - name: Build and package
+        env:
+          DD: ${{ runner.temp }}/husk-derived-data
+        run: ./scripts/ci_build.sh "$PWD/build/Husk.ipa"
+      - name: Upload test IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Husk-issue-282
+          path: build/Husk.ipa
+          if-no-files-found: error
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Husk-build-logs
+          path: |
+            build/logs/
+            ${{ runner.temp }}/husk-derived-data/build.log
